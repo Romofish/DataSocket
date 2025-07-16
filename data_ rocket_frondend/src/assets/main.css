@@ -1,0 +1,42 @@
+/* src/assets/main.css */
+
+/* 默认应用暗色主题变量 */
+:root {
+  --background-primary: #0f0c29;
+  --background-secondary: #1c1c3c;
+  --background-secondary-translucent: #1c1c3cDD;
+  --background-interactive: rgba(255, 255, 255, 0.05);
+  --background-interactive-hover: rgba(255, 255, 255, 0.08);
+
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+  --text-accent: #00FFFF;
+  --text-inverted: #0f0c29;
+
+  --border-primary: rgba(0, 255, 255, 0.2);
+  --border-interactive: #4a4a6a;
+  --border-accent: #00FFFF;
+}
+
+/* 当 html 元素有 .light-theme class 时，应用亮色主题变量 */
+html.light-theme {
+  --background-primary: #f4f4f5;
+  --background-secondary: #ffffff;
+  --background-secondary-translucent: #ffffffDD;
+  --background-interactive: #f1f5f9;
+  --background-interactive-hover: #e2e8f0;
+
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-accent: #0891b2;
+  --text-inverted: #ffffff;
+  
+  --border-primary: #e4e4e7;
+  --border-interactive: #cbd5e1;
+  --border-accent: #0891b2;
+}
+
+/* 全局过渡效果，让主题切换更平滑 */
+body, .als-reader-container, .sidebar, .main-content, input, button, textarea, select, .tool-card {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}

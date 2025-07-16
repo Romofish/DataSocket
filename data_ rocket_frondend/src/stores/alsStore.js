@@ -22,76 +22,75 @@ export const useAlsStore = defineStore('als', {
   }),
 
   getters: {
-  /**
-    * From Fields 表中提取所有出现过的独立角色
-    * @param {object} state - The store's state.
-    * @returns {Array<string>} An array of unique role names.
-    */
-  getAllRoles: (state) => {
-    if (!state.isParsed) return [];
-    const roles = new Set();
-    state.sheets.fields.forEach(field => {
-      safeSplit(field.ViewRestrictions).forEach(role => roles.add(role));
-      safeSplit(field.EntryRestrictions).forEach(role => roles.add(role));
-    });
-    // 返回一个包含 'All' 作为默认选项的排序后的角色列表
-    return ['All', ...Array.from(roles).sort()];
+    /**
+     * From Fields 表中提取所有出现过的独立角色
+     * @param {object} state - The store's state.
+     * @returns {Array<string>} An array of unique role names.
+     */
+    getAllRoles: (state) => {
+      if (!state.isParsed) return [];
+      const roles = new Set();
+      state.sheets.fields.forEach(field => {
+        safeSplit(field.ViewRestrictions).forEach(role => roles.add(role));
+        safeSplit(field.EntryRestrictions).forEach(role => roles.add(role));
+      });
+      // 返回一个包含 'All' 作为默认选项的排序后的角色列表
+      return ['All', ...Array.from(roles).sort()];
+    },
+
+    /**
+     * 根据 Form OID 和当前选择的角色，获取处理过的字段列表
+     * @param {object} state - The store's state.
+     * @returns {function(string, string): Array<object>} A function that takes formOid and selectedRole.
+     */
+    getFieldsForPreview: (state) => {
+      return (formOid, selectedRole = 'All') => {
+        if (!formOid || !state.isParsed) return [];
+        
+        const relatedFields = state.sheets.fields.filter(field => field.FormOID === formOid);
+
+        return relatedFields
+          .map(field => {
+            // 1. 权限处理
+            const viewRoles = safeSplit(field.ViewRestrictions);
+            const entryRoles = safeSplit(field.EntryRestrictions);
+            
+            const isVisible = selectedRole === 'All' || !viewRoles.includes(selectedRole);
+            const isEntryRestricted = selectedRole !== 'All' && entryRoles.includes(selectedRole);
+
+            // 2. 特殊标识处理
+            let prefix = '';
+            if (field.IsRequired === 'TRUE') prefix += '*';
+            if (field.QueryFutureDate === 'TRUE') prefix += '#';
+            if (field.QueryNonConformance === 'TRUE') prefix += '^';
+            if (field.DoesNotBreakSignature === 'TRUE') prefix += '$';
+
+            // 3. 数据字典关联 (FIXED LOGIC)
+            let entries = [];
+            if (field.DataDictionaryName) {
+              entries = state.sheets.dataDictionaryEntries
+                .filter(e => e.DataDictionaryName === field.DataDictionaryName)
+                .map(e => ({
+                  ...e,
+                  // 将 'Yes'/'TRUE' 等统一处理为布尔值
+                  Specify: ['yes', 'true'].includes(String(e.Specify).toLowerCase()),
+                }))
+                .sort((a, b) => a.Order - b.Order);
+            }
+
+            return {
+              ...field,
+              displayPrefix: prefix,
+              dictionaryEntries: entries,
+              isVisible,
+              isEntryRestricted,
+            };
+          })
+          .filter(field => field.isVisible) // 只返回可见的字段
+          .sort((a, b) => a.Ordinal - b.Ordinal);
+      };
+    },
   },
-
-  /**
-    * 根据 Form OID 和当前选择的角色，获取处理过的字段列表
-    * @param {object} state - The store's state.
-    * @returns {function(string, string): Array<object>} A function that takes formOid and selectedRole.
-    */
-  getFieldsForPreview: (state) => {
-    return (formOid, selectedRole = 'All') => {
-      if (!formOid || !state.isParsed) return [];
-      
-      const relatedFields = state.sheets.fields.filter(field => field.FormOID === formOid);
-
-      return relatedFields
-        .map(field => {
-          // 1. 权限处理
-          const viewRoles = safeSplit(field.ViewRestrictions);
-          const entryRoles = safeSplit(field.EntryRestrictions);
-          
-          const isVisible = selectedRole === 'All' || !viewRoles.includes(selectedRole);
-          const isEntryRestricted = selectedRole !== 'All' && entryRoles.includes(selectedRole);
-
-          // 2. 特殊标识处理
-          let prefix = '';
-          if (field.IsRequired === 'Yes') prefix += '*';
-          if (field.QueryFutureDate === 'Yes') prefix += '#';
-          if (field.QueryNonConformance === 'Yes') prefix += '^';
-          if (field.DoesNotBreakSignature === 'No') prefix += '$';
-
-          // 3. 数据字典关联 (FIXED LOGIC)
-          let entries = [];
-          if (field.DataDictionaryName) {
-            entries = state.sheets.dataDictionaryEntries
-              .filter(e => e.DataDictionaryName === field.DataDictionaryName)
-              .map(e => ({
-                ...e,
-                // 将 'Yes'/'TRUE' 等统一处理为布尔值
-                Specify: ['yes', 'true'].includes(String(e.Specify).toLowerCase()),
-              }))
-              .sort((a, b) => a.Order - b.Order);
-          }
-
-          return {
-            ...field,
-            displayPrefix: prefix,
-            dictionaryEntries: entries,
-            isVisible,
-            isEntryRestricted,
-          };
-        })
-        .filter(field => field.isVisible) // 只返回可见的字段
-        .sort((a, b) => a.Ordinal - b.Ordinal);
-    };
-  },
-},
-
 
   actions: {
     async parseFile(file) {
