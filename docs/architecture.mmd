@@ -1,0 +1,119 @@
+%% ==========================================================
+%% AI-Driven Clinical Trial Tool — Architecture Diagram
+%% Author: AI Assistant
+%% ==========================================================
+
+%% === System Overview ===
+flowchart LR
+  subgraph Client["Frontend (Vue 3 SPA)"]
+    UI["Home / ALS Reader / QC Console"]
+  end
+
+  subgraph Node["Node.js API Gateway"]
+    API["API Layer: /api/v1/*"]
+    AUTH["Auth / Validation"]
+  end
+
+  subgraph Python["Python AI Microservices"]
+    FAST["FastAPI: Matrix Extractor / QC Engine"]
+    WORKER["Async Worker (Celery/RQ)"]
+  end
+
+  subgraph Data["Data Layer"]
+    DB["PostgreSQL (Jobs/Users)"]
+    S3["Object Storage (MinIO/S3)"]
+    MQ["Message Queue (Redis/RabbitMQ)"]
+  end
+
+  UI -->|HTTP| API
+  API -->|Forward| FAST
+  FAST -->|Read/Write| S3
+  API -->|Read/Write| DB
+  API -.-> MQ
+  MQ -.-> WORKER
+  WORKER --> S3
+
+%% === Frontend Structure ===
+---
+flowchart TB
+  subgraph FE["Frontend / src"]
+    A["views/Home.vue
+Tools Grid"]
+    B["apps/registry.ts
+Single Source of Truth"]
+    C["views/AlsReaderView.vue
+Fields/Matrix"]
+    D["views/ComingSoon.vue
+Placeholder"]
+    E["stores/alsStore.ts
+Pinia Store"]
+    F["router/index.ts
+Aggregate Router"]
+    F1["router/modules/*.ts
+Module-based Routes"]
+    G["services/api.ts
+HTTP Client"]
+    H["components/*.vue
+MatrixView / ToolCard"]
+  end
+  B --> F
+  F --> F1
+  B --> A
+  F1 --> C
+  F1 --> D
+  A --> C
+  A --> D
+  C --> E
+  C --> H
+  A --> G
+  C --> G
+
+%% === Backend Structure ===
+---
+flowchart LR
+  subgraph BE_NODE["Backend - Node.js API Gateway"]
+    N1["server/index.ts
+Entry/Middlewares"]
+    N2["routes/jobs.ts
+POST /jobs, GET /jobs/:id"]
+    N3["routes/matrix.ts
+POST /parse-matrix (sync)"]
+    N4["services/fastapi.ts
+Call FastAPI"]
+    N5["services/storage.ts
+S3/MinIO"]
+    N6["services/db.ts
+PostgreSQL"]
+    N7["services/cache.ts
+Redis (optional)"]
+  end
+
+  subgraph BE_PY["Backend - Python FastAPI"]
+    P1["main.py
+/matrix/extract (upload)"]
+    P2["/matrix/extract-by-url (object storage)"]
+    P3["core/parser.py
+matrix parsing"]
+    P4["workers/* (Celery/RQ)
+long jobs"]
+  end
+
+  subgraph DATA["Data Layer"]
+    D1[("(PostgreSQL)")]
+    D2[("(S3/MinIO)")]
+    D3[["(Redis/RabbitMQ)"]]
+  end
+
+  N1 --> N2
+  N1 --> N3
+  N3 --> N4
+  N2 --> N6
+  N1 --> N5
+  N4 --> P1
+  N4 --> P2
+  P1 --> D2
+  P2 --> D2
+  N6 --- D1
+  N5 --- D2
+  N7 --- D3
+  P4 --- D3
