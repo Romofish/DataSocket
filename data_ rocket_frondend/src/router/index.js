@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
+// 🧩 1. 导入你的 LoginView 组件
+import LoginView from '../views/LoginView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,6 +10,12 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
+    },
+    // 🧩 2. 在这里添加新的路由，让应用知道 /login 路径该显示什么
+    {
+      path: '/login',
+      name: 'login',
+      component: LoginView,
     },
     {
       path: '/als-reader',

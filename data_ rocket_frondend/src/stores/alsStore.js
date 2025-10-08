@@ -18,6 +18,8 @@ export const useAlsStore = defineStore('als', {
       fields: [],
       dataDictionaries: [],
       dataDictionaryEntries: [],
+      folders: [],
+      matrixSheets: [],
     },
   }),
 
@@ -96,20 +98,63 @@ export const useAlsStore = defineStore('als', {
     async parseFile(file) {
       this.fileName = file.name;
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const requiredSheets = ['Forms', 'Fields', 'DataDictionaries', 'DataDictionaryEntries'];
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetMappings = {
+        forms: 'Forms',
+        fields: 'Fields',
+        folders: 'Folders',
+        dataDictionaries: 'DataDictionaries',
+        dataDictionaryEntries: 'DataDictionaryEntries',
+      };
 
-      for (const sheetName of requiredSheets) {
+      Object.entries(sheetMappings).forEach(([stateKey, sheetName]) => {
         const sheet = workbook.Sheets[sheetName];
-        const stateKey = sheetName.charAt(0).toLowerCase() + sheetName.slice(1);
         if (sheet) {
-          this.sheets[stateKey] = XLSX.utils.sheet_to_json(sheet);
+          this.sheets[stateKey] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
           console.log(`成功解析: ${sheetName}`);
         } else {
-          this.sheets[stateKey] = []; // 如果工作表不存在，则设置为空数组
+          this.sheets[stateKey] = [];
           console.warn(`警告: 在文件中未找到工作表 "${sheetName}"`);
         }
-      }
+      });
+
+      // 解析矩阵：读取所有名称含有 Matrix 的表格
+      this.sheets.matrixSheets = [];
+      workbook.SheetNames.forEach((name) => {
+        if (!name.toLowerCase().includes('matrix')) return;
+
+        const worksheet = workbook.Sheets[name];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        if (!rows || rows.length < 2) return; // 忽略空表格
+
+        // 跳过标题行（如 Matrix: MASTERDASHBOARD）
+        let headerRow = rows[0];
+        if (String(headerRow[0]).toLowerCase().includes('matrix:')) {
+          headerRow = rows[1];
+          rows.splice(0, 2);
+        } else {
+          rows.splice(0, 1);
+        }
+
+        const folderOids = headerRow.slice(1);
+        const matrixEntries = rows.map((row) => {
+          const formOid = row[0];
+          const includedFolders = [];
+          row.slice(1).forEach((cell, idx) => {
+            if (String(cell).trim().toUpperCase() === 'X') {
+              includedFolders.push(folderOids[idx]);
+            }
+          });
+          return { formOid, includedFolders };
+        });
+
+        this.sheets.matrixSheets.push({
+          sheetName: name,
+          folderOids,
+          matrixEntries,
+        });
+      });
+
       this.isParsed = true;
     },
     reset() {

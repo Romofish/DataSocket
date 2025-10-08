@@ -1,0 +1,29 @@
+-- 🧩 Table: login_users
+-- Purpose: Store user credentials and profile information
+-- Author: romofish 2025-10-07
+CREATE TABLE login_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- Use UUID for unique, non-sequential IDs
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255), -- Nullable, as SSO/Google users won't have a local password
+    full_name VARCHAR(100),
+    auth_provider VARCHAR(50) NOT NULL DEFAULT 'local', -- e.g., 'local', 'google', 'corporate_sso'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Create an index for faster email lookups
+CREATE INDEX idx_users_email ON login_users(email);
+
+-- Optional: A function to automatically update the updated_at timestamp
+CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_timestamp
+BEFORE UPDATE ON login_users
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_set_timestamp();

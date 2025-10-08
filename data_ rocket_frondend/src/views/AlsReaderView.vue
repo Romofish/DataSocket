@@ -37,52 +37,78 @@
 
       <main class="main-content">
         <div class="preview-header">
-          <div class="header-info">
+          <div class="header-info" v-if="!isMatrixMode">
             <h1 v-if="selectedForm" class="text-3xl font-bold">{{ selectedForm.OID }}</h1>
             <h1 v-else class="text-3xl font-bold">Please select a Form</h1>
             <p v-if="selectedForm" class="">{{ fieldsForPreview.length }} fields visible</p>
           </div>
-          <div class="controls">
-            <div class="control-group">
-              <label for="role-selector">Role</label>
-              <select id="role-selector" v-model="selectedRole" class="selector">
-                <option v-for="role in alsStore.getAllRoles" :key="role" :value="role">{{ role }}</option>
-              </select>
+          <div class="header-info" v-else>
+            <h1 class="text-3xl font-bold">Matrix Overview</h1>
+            <p class="">Folders mapped across matrix tabs</p>
+          </div>
+          <div class="control-bar">
+            <div class="view-mode-toggle">
+              <button
+                :class="{ active: !isMatrixMode }"
+                @click="isMatrixMode = false"
+              >
+                Fields
+              </button>
+              <button
+                :class="{ active: isMatrixMode }"
+                @click="isMatrixMode = true"
+              >
+                Matrix
+              </button>
             </div>
-            <div class="control-group">
-              <label>Label</label>
-              <div class="toggle-group">
-                <button @click="labelMode = 'DraftFieldName'" :class="{active: labelMode === 'DraftFieldName'}">Name</button>
-                <button @click="labelMode = 'SASLabel'" :class="{active: labelMode === 'SASLabel'}">SAS Label</button>
-                <button @click="labelMode = 'Both'" :class="{active: labelMode === 'Both'}">Both</button>
+            <div class="controls" v-if="!isMatrixMode">
+              <div class="control-group">
+                <label for="role-selector">Role</label>
+                <select id="role-selector" v-model="selectedRole" class="selector">
+                  <option v-for="role in alsStore.getAllRoles" :key="role" :value="role">{{ role }}</option>
+                </select>
               </div>
-            </div>
-            <div class="control-group">
-              <label>Preview Mode</label>
-              <div class="toggle-group">
-                <button @click="previewMode = 'dropdown'" :class="{active: previewMode === 'dropdown'}">Dropdown</button>
-                <button @click="previewMode = 'flat'" :class="{active: previewMode === 'flat'}">Flat</button>
+              <div class="control-group">
+                <label>Label</label>
+                <div class="toggle-group">
+                  <button @click="labelMode = 'DraftFieldName'" :class="{active: labelMode === 'DraftFieldName'}">Name</button>
+                  <button @click="labelMode = 'SASLabel'" :class="{active: labelMode === 'SASLabel'}">SAS Label</button>
+                  <button @click="labelMode = 'Both'" :class="{active: labelMode === 'Both'}">Both</button>
+                </div>
+              </div>
+              <div class="control-group">
+                <label>Preview Mode</label>
+                <div class="toggle-group">
+                  <button @click="previewMode = 'dropdown'" :class="{active: previewMode === 'dropdown'}">Dropdown</button>
+                  <button @click="previewMode = 'flat'" :class="{active: previewMode === 'flat'}">Flat</button>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        
-        <div v-if="!selectedForm" class="placeholder">
-          <i data-lucide="mouse-pointer-square" class="w-24 h-24 mb-4"></i>
-          <h2 class="text-2xl font-bold">Please select a Form from the left panel to preview</h2>
+
+        <div v-if="isMatrixMode" class="matrix-view-wrapper">
+          <MatrixView />
         </div>
         
-        <div v-else class="form-preview-area">
-          <div class="form-fields-container">
-            <FormField
-              v-for="field in fieldsForPreview"
-              :key="field.OID"
-              :field="field"
-              :label-mode="labelMode"
-              :preview-mode="previewMode"
-            />
+        <template v-else>
+          <div v-if="!selectedForm" class="placeholder">
+            <i data-lucide="mouse-pointer-square" class="w-24 h-24 mb-4"></i>
+            <h2 class="text-2xl font-bold">Please select a Form from the left panel to preview</h2>
           </div>
-        </div>
+          
+          <div v-else class="form-preview-area">
+            <div class="form-fields-container">
+              <FormField
+                v-for="field in fieldsForPreview"
+                :key="field.OID"
+                :field="field"
+                :label-mode="labelMode"
+                :preview-mode="previewMode"
+              />
+            </div>
+          </div>
+        </template>
       </main>
     </div>
   </div>
@@ -93,6 +119,7 @@ import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAlsStore } from '@/stores/alsStore';
 import FormField from '@/components/FormField.vue';
+import MatrixView from '@/components/MatrixView.vue';
 // 不再需要导入 ThemeToggleButton
 
 const router = useRouter();
@@ -103,6 +130,7 @@ const selectedForm = ref(null);
 const selectedRole = ref('All');
 const labelMode = ref('DraftFieldName');
 const previewMode = ref('dropdown');
+const isMatrixMode = ref(false);
 
 onMounted(() => {
   lucide.createIcons();
@@ -112,6 +140,11 @@ watch(selectedForm, async () => {
   selectedRole.value = 'All';
   labelMode.value = 'DraftFieldName';
   previewMode.value = 'dropdown';
+  await nextTick();
+  lucide.createIcons();
+});
+
+watch(isMatrixMode, async () => {
   await nextTick();
   lucide.createIcons();
 });
@@ -128,6 +161,7 @@ const selectForm = (form) => { selectedForm.value = form; };
 const resetView = () => {
   alsStore.reset();
   selectedForm.value = null;
+  isMatrixMode.value = false;
 };
 </script>
 
@@ -158,6 +192,7 @@ const resetView = () => {
 .header-info h1 { color: var(--text-primary); }
 .header-info p { color: var(--text-secondary); }
 .controls { display: flex; flex-wrap: wrap; gap: 20px 30px; align-items: flex-end; }
+.control-bar { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; justify-content: space-between; width: 100%; }
 .control-group { display: flex; flex-direction: column; gap: 8px; }
 .control-group label { font-size: 0.8rem; color: var(--text-secondary); font-weight: bold; text-transform: uppercase; }
 .selector { background-color: var(--background-interactive); border: 1px solid var(--border-interactive); color: var(--text-primary); padding: 8px 12px; border-radius: 5px; }
@@ -168,4 +203,8 @@ const resetView = () => {
 .placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; color: var(--text-secondary); }
 .form-preview-area { padding: 40px; }
 .form-fields-container { display: grid; grid-template-columns: 1fr; gap: 25px; }
+.view-mode-toggle { display: flex; gap: 10px; }
+.view-mode-toggle button { padding: 6px 12px; border: 1px solid var(--border-interactive); background-color: var(--background-interactive); color: var(--text-secondary); border-radius: 4px; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
+.view-mode-toggle button.active { background-color: var(--text-accent); color: var(--text-inverted); font-weight: bold; border-color: var(--text-accent); }
+.matrix-view-wrapper { padding: 20px 40px; height: calc(100% - 80px); overflow-y: auto; }
 </style>
