@@ -2,7 +2,20 @@ from __future__ import annotations
 from typing import BinaryIO, Dict, List, Any, Optional, Tuple
 import io
 import re
+import warnings
 import pandas as pd
+
+# Silence noisy but harmless openpyxl UserWarnings in some RAVE ALS files
+warnings.filterwarnings(
+    "ignore",
+    message=r"File contains an invalid specification for",
+    module=r"openpyxl\.reader\.workbook"
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"Defined names for sheet index .* cannot be located",
+    module=r"openpyxl\.reader\.workbook"
+)
 
 MATRIX_SHEET_DEFAULT = "MASTERDASHBOARD"  # preferred default when present
 
@@ -17,30 +30,42 @@ def discover_matrix_sheets(xl: pd.ExcelFile) -> List[Dict[str, str]]:
     Rules:
       - 'MASTERDASHBOARD' -> matrixOID 'MASTERDASHBOARD'
       - 'Matrix'          -> matrixOID 'Matrix'
-      - 'MatrixN#OID'     -> matrixOID 'OID' (e.g., 'Matrix2#SCREENING' -> 'SCREENING')
+      - 'MatrixN#OID'     -> matrixOID 'OID'  (e.g., 'Matrix11#EPEDD' -> 'EPEDD')
+    Sorting:
+      - MASTERDASHBOARD (if present)
+      - Matrix (if present)
+      - Then by the numeric N in 'MatrixN#OID' (ascending)
     """
-    out: List[Dict[str, str]] = []
-    for s in xl.sheet_names:
-      s_lower = s.lower()
-      if s_lower == "masterdashboard":
-          out.append({"matrixOID": "MASTERDASHBOARD", "sheet": s})
-      elif s_lower == "matrix":
-          out.append({"matrixOID": "Matrix", "sheet": s})
-      else:
-          # Match Matrix<number>#<OID>
-          m = re.match(r"^Matrix(\d+)?#(.+)$", s, flags=re.IGNORECASE)
-          if m:
-              oid = m.group(2).strip()
-              out.append({"matrixOID": oid, "sheet": s})
+    items: List[Dict[str, str]] = []
+    numbered: List[Tuple[int, str, str]] = []  # (N, OID, sheet)
 
-    # Deduplicate by matrixOID preserving first occurrence
+    for s in xl.sheet_names:
+        s_trim = s.strip()
+        sl = s_trim.lower()
+        if sl == "masterdashboard":
+            items.append({"matrixOID": "MASTERDASHBOARD", "sheet": s_trim})
+            continue
+        if sl == "matrix":
+            items.append({"matrixOID": "Matrix", "sheet": s_trim})
+            continue
+        m = re.match(r"^matrix\s*(\d+)\s*#\s*(.+)$", s_trim, flags=re.IGNORECASE)
+        if m:
+            n = int(m.group(1))
+            oid = m.group(2).strip()
+            numbered.append((n, oid, s_trim))
+
+    # sort numbered by N ascending
+    for n, oid, sheet in sorted(numbered, key=lambda x: x[0]):
+        items.append({"matrixOID": oid, "sheet": sheet})
+
+    # dedupe by matrixOID (first occurrence wins)
     seen = set()
     deduped = []
-    for item in out:
-        if item["matrixOID"] in seen:
+    for it in items:
+        if it["matrixOID"] in seen:
             continue
-        deduped.append(item)
-        seen.add(item["matrixOID"])
+        deduped.append(it)
+        seen.add(it["matrixOID"])
     return deduped
 
 
@@ -48,35 +73,75 @@ def choose_matrix_sheet(xl: pd.ExcelFile, matrix_oid: Optional[str]) -> str:
     """
     Resolve the worksheet name to parse based on requested matrix_oid.
     Preference order:
-      1) exact matrix_oid match from discover_matrix_sheets()
-      2) MASTERDASHBOARD (if exists)
-      3) Matrix (if exists)
-      4) else: raise
+      1) exact matrix_oid match (case-insensitive)
+      2) MASTERDASHBOARD
+      3) Matrix
+      4) else raise
     """
     matrices = discover_matrix_sheets(xl)
     if matrix_oid:
         for m in matrices:
-            if m["matrixOID"].lower() == matrix_oid.lower():
+            if m["matrixOID"].lower() == matrix_oid.strip().lower():
                 return m["sheet"]
-    # fallback preferences
     for pref in [MATRIX_SHEET_DEFAULT, "Matrix"]:
         for m in matrices:
             if m["matrixOID"].lower() == pref.lower():
                 return m["sheet"]
     raise ValueError(f"No usable Matrix sheet found. Available matrixOIDs: {[m['matrixOID'] for m in matrices]}")
 
-# ---------- Helper ----------
+
+def _find_sheet_fuzzy(xl: pd.ExcelFile, name: str) -> str:
+    # exact
+    for s in xl.sheet_names:
+        if s.strip().lower() == name.strip().lower():
+            return s
+    # contains
+    for s in xl.sheet_names:
+        if name.strip().lower() in s.strip().lower():
+            return s
+    raise ValueError(f"Required sheet '{name}' not found in ALS. Available: {xl.sheet_names}")
+
+
 def _get_col(df: pd.DataFrame, options: List[str]) -> Optional[str]:
-    lowmap = {c.lower(): c for c in df.columns}
+    lowmap = {str(c).strip().lower(): str(c) for c in df.columns}
     for opt in options:
-        if opt.lower() in lowmap:
-            return lowmap[opt.lower()]
+        if opt.strip().lower() in lowmap:
+            return lowmap[opt.strip().lower()]
     return None
+
+
+def _first_header_row(df_raw: pd.DataFrame, probe_rows: int = 30) -> int:
+    """
+    More tolerant header detector:
+      - scans up to `probe_rows`
+      - ignores empty/merged-note rows
+      - looks for typical tokens
+    """
+    header_tokens = {
+        "formoid", "form oid", "formname", "form name", "draftformname", "draft form name",
+        "folderoid", "folder oid", "foldername", "folder name"
+    }
+    n = min(probe_rows, len(df_raw))
+    for i in range(n):
+        row_vals = list(df_raw.iloc[i].values)
+        # skip rows that are fully blank
+        if all((str(x).strip() == "" or pd.isna(x)) for x in row_vals):
+            continue
+        row_strs = [str(x).strip().lower() for x in row_vals]
+        if any(tok in row_strs for tok in header_tokens):
+            return i
+    # fallback to first non-empty row
+    for i in range(n):
+        row_vals = list(df_raw.iloc[i].values)
+        if not all((str(x).strip() == "" or pd.isna(x)) for x in row_vals):
+            return i
+    return 0
+
 
 # --- Public: single entry point ---
 def extract_matrix(
     file: BinaryIO | bytes,
-    matrix_oid: Optional[str] = None,   # NEW: let caller choose which matrix to parse (default resolved to MASTERDASHBOARD/Matrix)
+    matrix_oid: Optional[str] = None,
     folder_sheet: str = "Folder",
     form_sheet: str = "Form",
     ssd_matrix: Optional[Dict[str, List[str]]] = None,
@@ -91,22 +156,28 @@ def extract_matrix(
       "meta": {
         "matrixOID": str,
         "sheet": str,
-        "availableMatrices": [ {"matrixOID": str, "sheet": str}, ... ]  # for frontend selectors, if needed
+        "availableMatrices": [ {"matrixOID": str, "sheet": str}, ... ]
       },
       "folders": [ { folderOID, folderName, forms: [ {formOID, formName} ... ] } ... ],
       "diff": { ... }  # only if ssd_matrix provided
     }
     """
     xls_bytes = file if isinstance(file, (bytes, bytearray)) else file.read()
-    xl = pd.ExcelFile(io.BytesIO(xls_bytes))
+    xl = pd.ExcelFile(io.BytesIO(xls_bytes), engine="openpyxl")
 
-    # Resolve WHICH matrix to parse
+    # which matrix
     matrix_ws = choose_matrix_sheet(xl, matrix_oid)
     available = discover_matrix_sheets(xl)
 
-    # Load Folder/Form metadata
-    df_folder_raw = pd.read_excel(xl, _find_sheet_fuzzy(xl, folder_sheet))
-    df_form_raw   = pd.read_excel(xl, _find_sheet_fuzzy(xl, form_sheet))
+    # load meta sheets (robust dtype=str to avoid 1/True confusion; no NA casting)
+    df_folder_raw = pd.read_excel(
+        xl, _find_sheet_fuzzy(xl, folder_sheet), engine="openpyxl",
+        dtype=str, keep_default_na=False
+    )
+    df_form_raw   = pd.read_excel(
+        xl, _find_sheet_fuzzy(xl, form_sheet), engine="openpyxl",
+        dtype=str, keep_default_na=False
+    )
 
     # Folder meta
     folderOID_col  = _get_col(df_folder_raw, ["FolderOID", "Folder OID", "OID"])
@@ -114,48 +185,44 @@ def extract_matrix(
     folder_meta: Dict[str, Optional[str]] = {}
     if folderOID_col:
         for _, r in df_folder_raw.iterrows():
-            oid = str(r.get(folderOID_col, "")).strip()
+            oid = (r.get(folderOID_col) or "").strip()
             if not oid:
                 continue
-            folder_meta[oid] = str(r.get(folderName_col, "")).strip() if folderName_col else None
+            folder_meta[oid] = ((r.get(folderName_col) or "").strip() if folderName_col else None)
 
     # Form meta  —— prefer DraftFormName, then FormName
     formOID_col   = _get_col(df_form_raw, ["FormOID", "Form OID", "OID"])
-    # IMPORTANT: DraftFormName first, then Fall back to FormName variants
     formName_col  = _get_col(df_form_raw, ["DraftFormName", "Draft Form Name", "FormName", "Form Name", "Name"])
     form_meta: Dict[str, Optional[str]] = {}
     if formOID_col:
         for _, r in df_form_raw.iterrows():
-            oid = str(r.get(formOID_col, "")).strip()
+            oid = (r.get(formOID_col) or "").strip()
             if not oid:
                 continue
-            form_meta[oid] = str(r.get(formName_col, "")).strip() if formName_col else None
+            form_meta[oid] = ((r.get(formName_col) or "").strip() if formName_col else None)
 
-    # Parse the chosen Matrix worksheet
-    df_matrix_raw = pd.read_excel(xl, matrix_ws, header=None)
+    # Parse Matrix sheet (robust)
+    df_matrix_raw = pd.read_excel(
+        xl, matrix_ws, header=None, engine="openpyxl",
+        dtype=str, keep_default_na=False
+    )
 
-    # Try to detect header row (up to first 10 rows)
-    header_row_idx = None
-    header_tokens = {
-        "formoid", "form oid", "formname", "form name", "draftformname", "draft form name",
-        "folderoid", "folder oid", "foldername", "folder name"
-    }
-    for i in range(min(10, len(df_matrix_raw))):
-        row_strs = [str(x).strip().lower() for x in list(df_matrix_raw.iloc[i].values)]
-        if any(tok in row_strs for tok in header_tokens):
-            header_row_idx = i
-            break
-    if header_row_idx is None:
-        header_row_idx = 0
+    header_row_idx = _first_header_row(df_matrix_raw, probe_rows=40)
 
-    df_matrix = pd.read_excel(xl, matrix_ws, header=header_row_idx)
+    df_matrix = pd.read_excel(
+        xl, matrix_ws, header=header_row_idx, engine="openpyxl",
+        dtype=str, keep_default_na=False
+    )
+    # strip whitespace in headers
+    df_matrix.columns = [str(c).strip() for c in df_matrix.columns]
+    # drop fully empty rows/cols after trimming
     df_matrix = df_matrix.dropna(how="all").dropna(axis=1, how="all")
 
     # Identify columns in Matrix sheet (long-format if both FolderOID & FormOID exist)
     m_form_oid_col   = _get_col(df_matrix, ["FormOID", "Form OID", "FORM OID", "Form", "Form Oid"])
-    # Also accept DraftFormName in Matrix sheet if present (some exports include it)
     m_form_name_col  = _get_col(df_matrix, ["DraftFormName", "Draft Form Name", "FormName", "Form Name", "FORM NAME", "Name"])
     m_folder_oid_col = _get_col(df_matrix, ["FolderOID", "Folder OID", "FOLDER OID", "Folder", "Folder Oid"])
+    # m_folder_name_col not required, but we’ll try to read if present
     m_folder_name_col= _get_col(df_matrix, ["FolderName", "Folder Name", "FOLDER NAME"])
 
     matrix_pairs: List[Tuple[str, str]] = []  # (FolderOID, FormOID)
@@ -163,8 +230,8 @@ def extract_matrix(
     if m_folder_oid_col and m_form_oid_col:
         # Long format: one row per relationship
         for _, r in df_matrix.iterrows():
-            foid = str(r.get(m_folder_oid_col, "")).strip()
-            frmid = str(r.get(m_form_oid_col, "")).strip()
+            foid = (r.get(m_folder_oid_col) or "").strip()
+            frmid = (r.get(m_form_oid_col) or "").strip()
             if foid and frmid:
                 matrix_pairs.append((foid, frmid))
     else:
@@ -173,14 +240,15 @@ def extract_matrix(
         folder_cols = [c for c in df_matrix.columns if c not in id_cols]
 
         def is_marked(val: Any) -> bool:
-            if pd.isna(val): return False
-            s = str(val).strip().lower()
+            s = (val or "").strip().lower()
             return s in {"x", "1", "yes", "y", "true"}
 
         def ensure_form_oid(row: pd.Series) -> str:
             if m_form_oid_col:
-                return str(row.get(m_form_oid_col, "")).strip()
-            base = str(row.get(m_form_name_col or id_cols[0], "")).strip()
+                cand = (row.get(m_form_oid_col) or "").strip()
+                if cand:
+                    return cand
+            base = (row.get(m_form_name_col or id_cols[0]) or "").strip()
             token = re.sub(r"[^A-Za-z0-9_]+", "_", base).strip("_").upper()
             return token or "FORM_UNKNOWN"
 
@@ -206,7 +274,7 @@ def extract_matrix(
         if not any(f.get("formOID") == frmid for f in by_folder[foid]["forms"]):
             by_folder[foid]["forms"].append({
                 "formOID": frmid,
-                # IMPORTANT: expose 'formName' but source from DraftFormName when available
+                # Expose as 'formName' but source from DraftFormName when available
                 "formName": form_meta.get(frmid)
             })
 
@@ -223,6 +291,7 @@ def extract_matrix(
         "folders": folders_sorted
     }
 
+    # SSD diff (optional)
     if ssd_matrix is not None:
         als_map = {f["folderOID"]: [x["formOID"] for x in f["forms"]] for f in folders_sorted}
         missing_in_db: Dict[str, List[str]] = {}
@@ -245,23 +314,13 @@ def extract_matrix(
     return result
 
 
-# --------- small internal helper(s) ----------
-def _find_sheet_fuzzy(xl: pd.ExcelFile, name: str) -> str:
-    for s in xl.sheet_names:
-        if s.lower() == name.lower():
-            return s
-    for s in xl.sheet_names:
-        if name.lower() in s.lower():
-            return s
-    raise ValueError(f"Required sheet '{name}' not found in ALS. Available: {xl.sheet_names}")
-
-
 def _resolve_matrix_oid_from_sheet(sheet_name: str) -> str:
-    if sheet_name.lower() == "masterdashboard":
+    s = sheet_name.strip()
+    if s.lower() == "masterdashboard":
         return "MASTERDASHBOARD"
-    if sheet_name.lower() == "matrix":
+    if s.lower() == "matrix":
         return "Matrix"
-    m = re.match(r"^Matrix(\d+)?#(.+)$", sheet_name, flags=re.IGNORECASE)
+    m = re.match(r"^matrix\s*(\d+)\s*#\s*(.+)$", s, flags=re.IGNORECASE)
     if m:
         return m.group(2).strip()
-    return sheet_name
+    return s

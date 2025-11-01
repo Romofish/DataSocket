@@ -1,40 +1,102 @@
+<!-- Only the CHANGED/NEW parts are shown; replace your current component with this full file if easier -->
+
 <template>
   <div class="p-6">
     <!-- Header -->
     <header class="mb-4">
       <h1 class="text-2xl font-semibold text-[#FF66A1]">ALS Matrix • Folder → Forms</h1>
       <p class="text-sm text-gray-500">
-        Upload ALS, expand Matrix (no “X”), filter by folder, compare with SSD, and export CSV.
+        Upload ALS, backend discovers Matrices (MASTERDASHBOARD preferred), pick one, expand (no “X”), filter by folder, compare with SSD, and export CSV.
       </p>
     </header>
 
     <section class="grid gap-4">
-      <!-- Upload + SSD -->
+      <!-- Upload + Matrix Picker + SSD + Actions -->
       <div class="rounded-2xl p-4 shadow border border-pink-100">
-        <label class="block text-sm font-medium mb-2 text-[#FF66A1]">ALS Excel (.xlsx)</label>
-        <input type="file" accept=".xlsx" @change="onUpload" class="block" />
+        <div class="grid lg:grid-cols-3 gap-4">
+          <!-- File input (custom-styled) -->
+          <div>
+            <label class="block text-sm font-medium mb-2 text-[#FF66A1]">ALS Excel (.xlsx)</label>
+            <div class="flex items-center gap-3">
+              <label class="btn-pink-outline cursor-pointer">
+                <input
+                  ref="fileEl"
+                  type="file"
+                  accept=".xlsx"
+                  class="hidden"
+                  @change="onUpload"
+                />
+                Choose a file
+              </label>
+              <span class="text-xs text-gray-600 truncate max-w-[16rem]" v-if="alsFileName">{{ alsFileName }}</span>
+              <span class="text-xs text-gray-400" v-else>No file chosen</span>
+            </div>
 
-        <div class="mt-3 grid md:grid-cols-2 gap-3">
+            <!-- Matrix picker: now ALWAYS visible once a file is chosen -->
+            <div v-if="alsFile" class="mt-3">
+              <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-[#FF66A1]">Select Matrix</label>
+                <button
+                  :disabled="loading || !alsFile"
+                  @click="discover"
+                  class="btn-chip"
+                  title="Re-scan matrices from this ALS"
+                >
+                  {{ loading && discoverPhase ? "Discovering..." : "Discover Matrices" }}
+                </button>
+              </div>
+
+              <div v-if="availableMatrices.length > 0" class="mt-2">
+                <select v-model="selectedMatrixOID" class="select-pink">
+                  <option v-for="m in availableMatrices" :key="m.matrixOID" :value="m.matrixOID">
+                    {{ m.matrixOID }} (sheet: {{ m.sheet }})
+                  </option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">
+                  Default preference: MASTERDASHBOARD → Matrix
+                </p>
+              </div>
+
+              <div v-else class="mt-2 text-xs text-gray-500">
+                No matrices discovered yet. Click <span class="font-medium">Discover Matrices</span>.
+              </div>
+            </div>
+          </div>
+
+          <!-- SSD input -->
           <div>
             <label class="block text-sm font-medium mb-2 text-[#FF66A1]">Optional SSD JSON</label>
-            <textarea v-model="ssdJson" rows="5" placeholder='{"SVISIT01":["AE","CM"]}'
-                      class="w-full rounded-xl border border-pink-200 p-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"></textarea>
+            <textarea
+              v-model="ssdJson"
+              rows="6"
+              placeholder='{"SVISIT01":["AE","CM"]}'
+              class="w-full rounded-xl border border-pink-200 p-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"
+            ></textarea>
           </div>
-          <div class="flex flex-col">
+
+          <!-- Actions -->
+          <div>
             <label class="block text-sm font-medium mb-2 text-[#FF66A1]">Actions</label>
             <div class="flex flex-wrap gap-2">
-              <button :disabled="loading" @click="submit"
-                      class="px-4 py-2 rounded-xl shadow bg-[#FF66A1] text-white hover:opacity-90 disabled:opacity-50">
-                {{ loading ? "Processing..." : "Extract Matrix" }}
+              <button :disabled="loading || !alsFile"
+                      @click="submit"
+                      class="btn-pink-solid">
+                {{ loading && !discoverPhase ? "Processing..." : "Extract Matrix" }}
               </button>
-              <button :disabled="!result" @click="exportCsv"
-                      class="px-4 py-2 rounded-xl shadow border border-pink-200 hover:bg-pink-50">
+
+              <button :disabled="!result" @click="exportCsv" class="btn-pink-outline">
                 Export CSV
               </button>
             </div>
             <p class="text-xs text-gray-500 mt-2">
-              CSV columns: FolderName, FolderOID, formname, FormOID
+              CSV columns: FolderName, FolderOID, FormName, FormOID
             </p>
+
+            <!-- Chosen meta -->
+            <div v-if="result?.meta" class="mt-3 text-xs text-gray-600">
+              <div>Chosen matrixOID: <span class="font-mono">{{ result.meta.matrixOID }}</span></div>
+              <div>Worksheet: <span class="font-mono">{{ result.meta.sheet }}</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -44,9 +106,9 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-xl font-semibold text-[#FF66A1]">Folder Filter</h2>
           <div class="flex items-center gap-2">
-            <button @click="selectAll" class="px-3 py-1.5 rounded-lg text-sm border border-pink-200 hover:bg-pink-50">Select all</button>
-            <button @click="clearAll" class="px-3 py-1.5 rounded-lg text-sm border border-pink-200 hover:bg-pink-50">Clear all</button>
-            <button @click="saveSelection" class="px-3 py-1.5 rounded-lg text-sm border border-pink-200 hover:bg-pink-50">Save selection</button>
+            <button @click="selectAll" class="btn-chip">Select all</button>
+            <button @click="clearAll" class="btn-chip">Clear all</button>
+            <button @click="saveSelection" class="btn-chip">Save selection</button>
             <label class="ml-2 inline-flex items-center gap-2 text-sm">
               <input type="checkbox" v-model="autoRemember" />
               Auto-remember
@@ -94,9 +156,8 @@
 
             <ul class="mt-2 pl-4 list-disc">
               <li v-for="fm in f.forms" :key="fm.formOID" class="text-sm">
-                <!-- (1) Show FormName along with FormOID -->
                 <span class="font-mono">{{ fm.formOID }}</span>
-                <span v-if="fm.formname" class="text-gray-600"> — {{ fm.formname }}</span>
+                <span v-if="fm.formName" class="text-gray-600"> — {{ fm.formName }}</span>
                 <span v-else class="text-gray-400"> — (no name)</span>
               </li>
             </ul>
@@ -138,18 +199,35 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue"
 
-const fileRef = ref<File | null>(null)
+const fileEl = ref<HTMLInputElement | null>(null)
+const alsFile = ref<File | null>(null)
+const alsFileName = ref<string>("")
 const ssdJson = ref<string>("")
 const result = ref<any | null>(null)
 const loading = ref(false)
+const discoverPhase = ref(false)
+
+/** Matrix discovery */
+type MatrixItem = { matrixOID: string; sheet: string }
+const availableMatrices = ref<MatrixItem[]>([])
+const selectedMatrixOID = ref<string | null>(null)
 
 /** Folder selection (filter) */
 const selectedFolders = ref<Set<string>>(new Set())
 const autoRemember = ref<boolean>(true)
 
+/** On file choose: store + AUTO-DISCOVER matrices */
 function onUpload(e: Event) {
   const input = e.target as HTMLInputElement
-  fileRef.value = input.files?.[0] ?? null
+  alsFile.value = input.files?.[0] ?? null
+  alsFileName.value = alsFile.value?.name ?? ""
+  result.value = null
+  availableMatrices.value = []
+  selectedMatrixOID.value = null
+  if (alsFile.value) {
+    // auto-discover to make the selector appear without extra clicks
+    setTimeout(() => discover(), 0)
+  }
 }
 
 /** Helpers */
@@ -172,7 +250,6 @@ function restoreSelection() {
     const parsed = JSON.parse(raw)
     autoRemember.value = !!parsed.auto
     const validSet = new Set<string>()
-    // Only restore folders that still exist in current result
     const folderOIDs = new Set(allFolders.value.map(f => f.folderOID))
     for (const oid of (parsed.selected || [])) {
       if (folderOIDs.has(oid)) validSet.add(oid)
@@ -181,30 +258,70 @@ function restoreSelection() {
   } catch {}
 }
 
-/** Fetch/parse ALS */
-async function submit() {
-  if (!fileRef.value) return
+/** Discover matrices (backend) */
+async function discover() {
+  if (!alsFile.value) return
   loading.value = true
+  discoverPhase.value = true
   try {
     const fd = new FormData()
-    fd.append("als_file", fileRef.value)
+    fd.append("als_file", alsFile.value)
+    const res = await fetch(import.meta.env.VITE_API_BASE + "/als/matrices", {
+      method: "POST",
+      body: fd
+    })
+    if (!res.ok) throw new Error(await res.text())
+    const data = await res.json()
+    availableMatrices.value = data.availableMatrices || []
+    // Preferred default is MASTERDASHBOARD; fall back to first item
+    const preferred = "MASTERDASHBOARD"
+    const hasPreferred = availableMatrices.value.find(m => m.matrixOID.toLowerCase() === preferred.toLowerCase())
+    selectedMatrixOID.value = (hasPreferred?.matrixOID) || (availableMatrices.value[0]?.matrixOID) || null
+  } catch (err) {
+    alert("Discovery failed: " + err)
+  } finally {
+    loading.value = false
+    discoverPhase.value = false
+  }
+}
+
+/** Extract/parse ALS with selected matrix_oid */
+async function submit() {
+  if (!alsFile.value) return
+  // guard: ensure matrix chosen if list exists
+  if (availableMatrices.value.length > 0 && !selectedMatrixOID.value) {
+    alert("Please select a Matrix to proceed.")
+    return
+  }
+  loading.value = true
+  discoverPhase.value = false
+  try {
+    const fd = new FormData()
+    fd.append("als_file", alsFile.value)
     if (ssdJson.value.trim()) {
       fd.append("ssd_folder_forms", new Blob([ssdJson.value], { type: "application/json" }))
     }
-    const res = await fetch(import.meta.env.VITE_API_BASE + "/als/matrix", {
+    const q = selectedMatrixOID.value ? ("?matrix_oid=" + encodeURIComponent(selectedMatrixOID.value)) : ""
+    const res = await fetch(import.meta.env.VITE_API_BASE + "/als/matrix" + q, {
       method: "POST",
       body: fd
     })
     if (!res.ok) throw new Error(await res.text())
     result.value = await res.json()
 
-    // Initialize selection to all folders on fresh load
+    // If backend returns meta.availableMatrices, keep it for the selector (extra safety)
+    if (result.value?.meta?.availableMatrices?.length) {
+      availableMatrices.value = result.value.meta.availableMatrices
+      if (!selectedMatrixOID.value) {
+        selectedMatrixOID.value = result.value.meta.matrixOID || null
+      }
+    }
+
+    // Initialize folder selection
     const all = result.value?.folders?.map((f: any) => f.folderOID) ?? []
     selectedFolders.value = new Set(all)
 
-    // Auto-restore prior selection (if enabled and matches current data)
     if (autoRemember.value) {
-      // Wait one tick to compute allFolders
       setTimeout(() => restoreSelection(), 0)
     }
   } catch (err) {
@@ -240,25 +357,22 @@ function clearAll() {
   if (autoRemember.value) saveSelection()
 }
 
-/** CSV Export: FolderName, FolderOID, FormName, FormOID (one form per row) */
+/** CSV Export */
 function exportCsv() {
   if (!result.value) return
   const rows: string[] = []
   const header = ["FolderName","FolderOID","FormName","FormOID"]
   rows.push(header.join(","))
-
-  const folders = visibleFolders.value // export only visible folders
+  const folders = visibleFolders.value
   for (const f of folders) {
     const folderName = (f.folderName ?? "").toString().replaceAll('"','""')
     const folderOID  = (f.folderOID  ?? "").toString().replaceAll('"','""')
     for (const fm of (f.forms ?? [])) {
-      const formname = (fm.formname ?? "").toString().replaceAll('"','""')
+      const formName = (fm.formName ?? "").toString().replaceAll('"','""')
       const formOID  = (fm.formOID  ?? "").toString().replaceAll('"','""')
-      // Wrap in quotes to be safe with commas
-      rows.push([`"${folderName}"`,`"${folderOID}"`,`"${formname}"`,`"${formOID}"`].join(","))
+      rows.push([`"${folderName}"`,`"${folderOID}"`,`"${formName}"`,`"${formOID}"`].join(","))
     }
   }
-
   const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" })
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
@@ -277,5 +391,17 @@ watch(autoRemember, (v) => {
 </script>
 
 <style scoped>
-/* Tech-Soft Pink accents kept lightweight; Tailwind handles most styling */
+/* ========= Tech-Soft Pink UI helpers ========= */
+.btn-pink-solid {
+  @apply px-4 py-2 rounded-xl shadow bg-[#FF66A1] text-white hover:opacity-90 disabled:opacity-50;
+}
+.btn-pink-outline {
+  @apply px-4 py-2 rounded-xl shadow border border-pink-200 hover:bg-pink-50 disabled:opacity-50;
+}
+.btn-chip {
+  @apply px-3 py-1.5 rounded-lg text-sm border border-pink-200 hover:bg-pink-50 disabled:opacity-50;
+}
+.select-pink {
+  @apply w-full rounded-xl border border-pink-200 p-2 text-sm outline-none focus:ring-2 focus:ring-pink-300 bg-white;
+}
 </style>
