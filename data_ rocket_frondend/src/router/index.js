@@ -11,7 +11,7 @@ const router = createRouter({
       name: 'home',
       component: HomeView,
     },
-    // 🧩 2. 在这里添加新的路由，让应用知道 /login 路径该显示什么
+
     {
       path: '/login',
       name: 'login',
@@ -22,6 +22,13 @@ const router = createRouter({
       name: 'als-reader',
       component: () => import('../views/AlsReaderView.vue')
     },
+
+    {
+      path: '/matrix',
+      name: 'matrix',
+      component: () => import('../views/MatrixView.vue')
+    },
+
     {
       path: '/about',
       name: 'about',
