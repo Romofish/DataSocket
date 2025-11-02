@@ -293,21 +293,29 @@ def extract_matrix(
 
     # SSD diff (optional)
     if ssd_matrix is not None:
-        als_map = {f["folderOID"]: [x["formOID"] for x in f["forms"]] for f in folders_sorted}
+        # Normalize ALS forms to uppercase for case-insensitive compare
+        als_map_raw = {f["folderOID"]: [x["formOID"] for x in f["forms"]] for f in folders_sorted}
+        als_map_norm: Dict[str, set] = {fo: {str(frm).upper() for frm in frms} for fo, frms in als_map_raw.items()}
         missing_in_db: Dict[str, List[str]] = {}
         extra_in_db: Dict[str, List[str]] = {}
 
-        for foid, ssd_forms in ssd_matrix.items():
-            als_forms = set(als_map.get(foid, []))
-            miss = sorted([frm for frm in set(ssd_forms) if frm not in als_forms])
-            if miss:
-                missing_in_db[foid] = miss
+        # ssd_matrix values may already be normalized by caller; ensure uppercase
+        ssd_norm: Dict[str, set] = {fo: {str(frm).upper() for frm in frms} for fo, frms in ssd_matrix.items()}
 
-        for foid, als_forms in als_map.items():
-            ssd_forms = set(ssd_matrix.get(foid, []))
-            extra = sorted([frm for frm in set(als_forms) if frm not in ssd_forms])
-            if extra:
-                extra_in_db[foid] = extra
+        # Missing: present in SSD but not in ALS
+        for foid, ssd_forms in ssd_norm.items():
+            als_forms = als_map_norm.get(foid, set())
+            miss_norm = sorted([frm for frm in ssd_forms if frm not in als_forms])
+            if miss_norm:
+                # Return missing using the original (upper) tokens
+                missing_in_db[foid] = miss_norm
+
+        # Extra: present in ALS but not in SSD
+        for foid, als_forms in als_map_norm.items():
+            ssd_forms = ssd_norm.get(foid, set())
+            extra_norm = sorted([frm for frm in als_forms if frm not in ssd_forms])
+            if extra_norm:
+                extra_in_db[foid] = extra_norm
 
         result["diff"] = {"missing_in_db": missing_in_db, "extra_in_db": extra_in_db}
 

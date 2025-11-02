@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api.routes_als import router as als_router
+from .api.routes_ssd import router as ssd_router
 import logging
 
 app = FastAPI(title="ALS Matrix Service")
@@ -18,3 +19,4 @@ app.add_middleware(
 )
 
 app.include_router(als_router)
+app.include_router(ssd_router)

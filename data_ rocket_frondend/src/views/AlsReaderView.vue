@@ -88,7 +88,9 @@
         </div>
 
         <div v-if="isMatrixMode" class="matrix-view-wrapper">
-          <MatrixView />
+          <div class="p-6 rounded-xl border border-pink-200 bg-pink-50 text-pink-700">
+            Matrix overview moved to Matrix Review page. Use route /matrix.
+          </div>
         </div>
         
         <template v-else>
@@ -119,7 +121,6 @@ import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAlsStore } from '@/stores/alsStore';
 import FormField from '@/components/FormField.vue';
-import MatrixView from '@/components/MatrixView.vue';
 // 不再需要导入 ThemeToggleButton
 
 const router = useRouter();

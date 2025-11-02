@@ -26,7 +26,7 @@ const router = createRouter({
     {
       path: '/matrix',
       name: 'matrix',
-      component: () => import('../views/MatrixView.vue')
+      component: () => import('../views/MatrixReview.vue')
     },
 
     {
