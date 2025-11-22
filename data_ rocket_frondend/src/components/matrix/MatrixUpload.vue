@@ -9,8 +9,9 @@
       <div>
         <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Step 1 — Upload ALS</h3>
         <div class="flex items-center gap-3">
-          <label class="btn-secondary cursor-pointer">
+          <label class="btn-upload-pink cursor-pointer">
             <input type="file" accept=".xlsx" class="hidden" @change="onAls">
+            <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
             Choose a file
           </label>
           <span class="text-xs text-gray-600 truncate max-w-[16rem]" v-if="store.alsFileName">{{ store.alsFileName }}</span>
@@ -27,7 +28,12 @@
       <!-- Step 3: Select matrix (only after discovery) -->
       <div v-if="store.alsFile && store.availableMatrices.length">
         <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Step 3 — Select Matrix</h3>
-        <select v-model="store.selectedMatrixOID" class="select-pink w-full max-w-md"></select>
+        <select v-model="store.selectedMatrixOID" class="select-pink w-full max-w-md">
+          <option disabled value="">— Select a matrix —</option>
+          <option v-for="m in store.availableMatrices" :key="m.matrixOID" :value="m.matrixOID">
+            {{ m.matrixOID }} (sheet: {{ m.sheet }})
+          </option>
+        </select>
         <div class="mt-1 text-xs text-gray-500">Default preference: MASTERDASHBOARD</div>
       </div>
 
@@ -61,4 +67,5 @@ function onAls(e: Event){
 .btn-secondary { @apply px-4 py-2 rounded-xl shadow border border-cyan-100 bg-white text-cyan-700 hover:bg-cyan-50 focus:ring-2 focus:ring-cyan-200 disabled:opacity-50 disabled:cursor-not-allowed; }
 .btn-chip { @apply px-3 py-1.5 rounded-lg text-sm border border-cyan-100 hover:bg-cyan-50 disabled:opacity-50; }
 .select-pink { @apply w-full rounded-xl border border-cyan-100 p-2 text-sm outline-none focus:ring-2 focus:ring-cyan-200 bg-white; }
+.btn-upload-pink { @apply inline-flex items-center px-4 py-2 rounded-full border border-pink-300 text-pink-600 bg-white hover:bg-pink-50 shadow-sm focus:ring-2 focus:ring-pink-200; }
 </style>
