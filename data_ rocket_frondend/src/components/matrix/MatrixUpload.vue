@@ -1,45 +1,41 @@
 <template>
-  <div class="rounded-2xl p-4 shadow border border-pink-100">
-    <div class="grid lg:grid-cols-3 gap-4">
-      <!-- ALS Upload -->
+  <div class="rounded-2xl p-4 shadow border border-cyan-100 bg-white">
+    <div v-if="store.loading" class="h-1 w-full bg-cyan-50 rounded overflow-hidden mb-3">
+      <div class="h-full w-1/2 animate-pulse bg-cyan-300/60"></div>
+    </div>
+    <!-- Vertical step flow -->
+    <div class="space-y-5">
+      <!-- Step 1: ALS upload -->
       <div>
-        <label class="block text-sm font-medium mb-2 text-[#FF66A1]">ALS Excel (.xlsx)</label>
+        <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Step 1 — Upload ALS</h3>
         <div class="flex items-center gap-3">
-          <label class="btn-pink-outline cursor-pointer">
+          <label class="btn-secondary cursor-pointer">
             <input type="file" accept=".xlsx" class="hidden" @change="onAls">
             Choose a file
           </label>
           <span class="text-xs text-gray-600 truncate max-w-[16rem]" v-if="store.alsFileName">{{ store.alsFileName }}</span>
           <span class="text-xs text-gray-400" v-else>No file chosen</span>
         </div>
-
-        <!-- Matrix picker -->
-        <div v-if="store.alsFile" class="mt-3">
-          <div class="flex items-center justify-between">
-            <label class="block text-sm font-medium text-[#FF66A1]">Select Matrix</label>
-            <button :disabled="store.loading || !store.alsFile" @click="store.discoverMatrices" class="btn-chip">Discover Matrices</button>
-          </div>
-          <div v-if="store.availableMatrices.length" class="mt-2">
-            <select v-model="store.selectedMatrixOID" class="select-pink">
-              <option v-for="m in store.availableMatrices" :key="m.matrixOID" :value="m.matrixOID">{{ m.matrixOID }} (sheet: {{ m.sheet }})</option>
-            </select>
-            <p class="text-xs text-gray-500 mt-1">Default preference: MASTERDASHBOARD</p>
-          </div>
-          <div v-else class="mt-2 text-xs text-gray-500">No matrices discovered yet. Click Discover Matrices.</div>
-        </div>
       </div>
 
-      <!-- Spacer column (matches Figma layout) -->
-      <div></div>
+      <!-- Step 2: Discover matrices (shown only after file selected) -->
+      <div v-if="store.alsFile">
+        <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Step 2 — Discover Matrices</h3>
+        <button class="btn-primary" :disabled="store.loading" @click="store.discoverMatrices">Discover Matrices</button>
+      </div>
 
-      <!-- Actions / Meta -->
-      <div>
-        <label class="block text-sm font-medium mb-2 text-[#FF66A1]">Actions</label>
-        <div class="flex flex-wrap gap-2">
-          <button :disabled="store.loading || !store.alsFile" @click="store.extractMatrix" class="btn-pink-solid">Extract Matrix</button>
-        </div>
+      <!-- Step 3: Select matrix (only after discovery) -->
+      <div v-if="store.alsFile && store.availableMatrices.length">
+        <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Step 3 — Select Matrix</h3>
+        <select v-model="store.selectedMatrixOID" class="select-pink w-full max-w-md"></select>
+        <div class="mt-1 text-xs text-gray-500">Default preference: MASTERDASHBOARD</div>
+      </div>
+
+      <!-- Step 4: Extract matrix (only after a matrix is selected) -->
+      <div v-if="store.alsFile && store.availableMatrices.length && store.selectedMatrixOID">
+        <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Step 4 — Extract Matrix</h3>
+        <button class="btn-primary" :disabled="store.loading" @click="store.extractMatrix">Extract Matrix</button>
         <p class="text-xs text-gray-500 mt-2">CSV columns: FolderName, FolderOID, FormName, FormOID</p>
-
         <div v-if="store.result?.meta" class="mt-3 text-xs text-gray-600">
           <div>Chosen matrixOID: <span class="font-mono">{{ store.result.meta.matrixOID }}</span></div>
           <div>Worksheet: <span class="font-mono">{{ store.result.meta.sheet }}</span></div>
@@ -61,9 +57,8 @@ function onAls(e: Event){
 </script>
 
 <style scoped>
-.btn-pink-solid { @apply px-4 py-2 rounded-xl shadow bg-[#FF66A1] text-white hover:opacity-90 disabled:opacity-50; }
-.btn-pink-outline { @apply px-4 py-2 rounded-xl shadow border border-pink-200 hover:bg-pink-50 disabled:opacity-50; }
-.btn-chip { @apply px-3 py-1.5 rounded-lg text-sm border border-pink-200 hover:bg-pink-50 disabled:opacity-50; }
-.select-pink { @apply w-full rounded-xl border border-pink-200 p-2 text-sm outline-none focus:ring-2 focus:ring-pink-300 bg-white; }
+.btn-primary { @apply px-4 py-2 rounded-xl shadow bg-[#0EA5E9] text-white hover:shadow-lg hover:shadow-cyan-200/60 focus:ring-2 focus:ring-cyan-300 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed; }
+.btn-secondary { @apply px-4 py-2 rounded-xl shadow border border-cyan-100 bg-white text-cyan-700 hover:bg-cyan-50 focus:ring-2 focus:ring-cyan-200 disabled:opacity-50 disabled:cursor-not-allowed; }
+.btn-chip { @apply px-3 py-1.5 rounded-lg text-sm border border-cyan-100 hover:bg-cyan-50 disabled:opacity-50; }
+.select-pink { @apply w-full rounded-xl border border-cyan-100 p-2 text-sm outline-none focus:ring-2 focus:ring-cyan-200 bg-white; }
 </style>
-

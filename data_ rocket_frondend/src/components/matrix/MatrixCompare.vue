@@ -1,30 +1,30 @@
 <template>
-  <div class="rounded-2xl p-4 shadow border border-pink-100" v-if="store.result">
-    <h2 class="text-xl font-semibold text-[#FF66A1] mb-3">Compare with SSD</h2>
+  <div class="rounded-2xl p-4 shadow border border-cyan-100 bg-white" v-if="store.result">
+    <h2 class="text-xl font-semibold text-[#0EA5E9] mb-3">Compare with SSD</h2>
 
-    <div class="grid lg:grid-cols-2 gap-4">
-      <!-- Paste area -->
+    <div class="space-y-5">
+      <!-- Step A: paste path -->
       <div>
-        <label class="block text-sm font-medium mb-2 text-[#FF66A1]">SSD Data (Paste Only)</label>
-        <textarea v-model="store.ssdText" rows="10" placeholder='{"SVISIT01":["AE","CM"]}' class="w-full rounded-xl border border-pink-200 p-3 text-sm outline-none focus:ring-2 focus:ring-pink-300"></textarea>
-        <p class="text-xs text-gray-500 mt-1">Enter JSON mapping or rows; upload preview will not be copied here.</p>
+        <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Paste SSD JSON/CSV (optional)</h3>
+        <textarea v-model="store.ssdText" rows="8" placeholder='{"SVISIT01":["AE","CM"]}' class="w-full rounded-xl border border-cyan-100 p-3 text-sm outline-none focus:ring-2 focus:ring-cyan-200"></textarea>
+        <p class="text-xs text-gray-500 mt-1">Upload preview will not copy here; paste is optional.</p>
       </div>
 
-      <!-- Upload + Preview controls -->
+      <!-- Step B: upload path (enabled after ALS extract) -->
       <div>
-        <label class="block text-sm font-medium mb-2 text-[#FF66A1]">Upload SSD File</label>
+        <h3 class="text-sm font-medium text-[#0EA5E9] mb-2">Upload SSD File</h3>
         <div class="flex items-center gap-2">
-          <label class="btn-pink-outline cursor-pointer">
+          <label class="btn-primary cursor-pointer">
             <input type="file" accept=".json,.csv,.xlsx" class="hidden" @change="onFile">
-            Upload
+            Upload SSD
           </label>
           <span class="text-xs text-gray-600 truncate max-w-[16rem]" v-if="store.ssdFileName">{{ store.ssdFileName }}</span>
           <span class="text-xs text-gray-400" v-else>Supports JSON / CSV / XLSX</span>
-          <button class="btn-chip ml-2" :disabled="!store.ssdFile" @click="store.previewSSD">Preview</button>
+          <button v-if="store.ssdFile" class="btn-secondary ml-2" @click="store.previewSSD">Preview</button>
         </div>
 
-        <!-- Preview (10 lines per page) shown only after clicking Preview -->
-        <div v-if="store.ssdPreview.length" class="mt-3 rounded-lg border border-pink-200">
+        <!-- Preview (10 lines per page) only when explicitly requested -->
+        <div v-if="store.ssdPreview.length" class="mt-3 rounded-lg border border-cyan-100">
           <div class="flex items-center justify-between px-3 py-2 text-xs text-gray-600">
             <span>SSD Preview ({{ store.ssdPreview.length }} lines)</span>
             <div class="flex items-center gap-2">
@@ -36,17 +36,17 @@
           <pre class="max-h-40 overflow-auto text-xs p-3">{{ store.ssdPreviewSlice.join('\n') }}</pre>
         </div>
       </div>
-    </div>
 
-    <div class="flex items-center gap-2 mt-4">
-      <button class="btn-pink-solid" :disabled="!store.result" @click="store.compareSSD">Compare</button>
-      <button class="btn-pink-outline" :disabled="!hasDiff" @click="store.exportDiffCsv">Export results</button>
+      <div class="flex items-center gap-2">
+        <button class="btn-primary" :disabled="!canCompare" @click="store.compareSSD">Compare</button>
+        <button class="btn-secondary" :disabled="!hasDiff" @click="store.exportDiffCsv">Export results</button>
+      </div>
     </div>
 
     <div v-if="hasDiff" class="grid md:grid-cols-2 gap-4 mt-4">
-      <div class="rounded-xl border border-pink-200">
-        <div class="p-3 border-b border-pink-100">
-          <h3 class="font-medium text-pink-600">Missing in DB (should exist)</h3>
+      <div class="rounded-xl border border-cyan-100">
+        <div class="p-3 border-b border-cyan-100">
+          <h3 class="font-medium text-cyan-700">Missing in DB (should exist)</h3>
         </div>
         <div class="custom-scroll max-h-96 overflow-y-auto p-3">
           <div v-if="isEmpty(store.diff.missing_in_db)" class="text-sm text-gray-500">None</div>
@@ -66,9 +66,9 @@
           </div>
         </div>
       </div>
-      <div class="rounded-xl border border-pink-200">
-        <div class="p-3 border-b border-pink-100">
-          <h3 class="font-medium text-pink-600">Extra in DB (not in SSD)</h3>
+      <div class="rounded-xl border border-cyan-100">
+        <div class="p-3 border-b border-cyan-100">
+          <h3 class="font-medium text-cyan-700">Extra in DB (not in SSD)</h3>
         </div>
         <div class="custom-scroll max-h-96 overflow-y-auto p-3">
           <div v-if="isEmpty(store.diff.extra_in_db)" class="text-sm text-gray-500">None</div>
@@ -97,6 +97,7 @@ import { computed } from 'vue'
 import { useMatrixStore } from '../../stores/matrix'
 const store = useMatrixStore()
 const hasDiff = computed(() => !!store.diff && (!isEmpty(store.diff.missing_in_db) || !isEmpty(store.diff.extra_in_db)))
+const canCompare = computed(() => !!store.result && ((store.ssdFile != null) || (store.ssdText.trim().length > 0)))
 function isEmpty(obj: any){ return !obj || Object.keys(obj).length === 0 }
 function onFile(e: Event){
   const input = e.target as HTMLInputElement
@@ -116,12 +117,12 @@ const formNamePreferALS   = (frm: string) => store.alsFormNameMap[frm.toUpperCas
 </script>
 
 <style scoped>
-.btn-pink-solid { @apply px-4 py-2 rounded-xl shadow bg-[#FF66A1] text-white hover:opacity-90 disabled:opacity-50; }
-.btn-pink-outline { @apply px-4 py-2 rounded-xl shadow border border-pink-200 hover:bg-pink-50 disabled:opacity-50; }
-.btn-chip { @apply px-3 py-1.5 rounded-lg text-sm border border-pink-200 hover:bg-pink-50 disabled:opacity-50; }
+.btn-cyan-solid { @apply px-4 py-2 rounded-xl shadow bg-[#0EA5E9] text-white hover:opacity-90 disabled:opacity-50; }
+.btn-cyan-outline { @apply px-4 py-2 rounded-xl shadow border border-cyan-100 hover:bg-cyan-50 disabled:opacity-50; }
+.btn-chip { @apply px-3 py-1.5 rounded-lg text-sm border border-cyan-100 hover:bg-cyan-50 disabled:opacity-50; }
 /* subtle pretty scrollbar inside cards */
 .custom-scroll::-webkit-scrollbar { width: 8px; }
 .custom-scroll::-webkit-scrollbar-track { background: #fff0f6; border-radius: 9999px; }
-.custom-scroll::-webkit-scrollbar-thumb { background: #f9a8d4; border-radius: 9999px; }
-.custom-scroll { scrollbar-width: thin; scrollbar-color: #f9a8d4 #fff0f6; }
+.custom-scroll::-webkit-scrollbar-thumb { background: #7dd3fc; border-radius: 9999px; }
+.custom-scroll { scrollbar-width: thin; scrollbar-color: #7dd3fc #ecfeff; }
 </style>
